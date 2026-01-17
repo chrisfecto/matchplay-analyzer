@@ -104,12 +104,20 @@ async function getTournamentIds(userId, page) {
     // Filter to 2025 tournaments only via API
     console.log(`📅 Filtering to 2025 tournaments only...\n`);
     const axios = require('axios');
+    const https = require('https');
+
+    const axiosConfig = {
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false
+      })
+    };
+
     const filtered2025 = [];
     let checkedCount = 0;
 
     for (const tournamentId of allTournamentIds) {
       try {
-        const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`);
+        const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`, axiosConfig);
         const tournament = response.data;
 
         // Debug first tournament to see structure
