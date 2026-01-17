@@ -122,11 +122,72 @@ async function getTournamentIds(userId, email, password) {
     }
 
     const tournamentIds = allTournamentIds;
-    
-    await browser.close();
-    
+
     console.log(`✅ Found ${tournamentIds.length} tournaments!\n`);
-    
+
+    // Scrape arena names from tournaments
+    console.log(`🎰 Scraping machine names from tournaments...\n`);
+    const arenaMap = {};
+    let scrapedCount = 0;
+
+    for (const tournamentId of tournamentIds) {
+      try {
+        const arenaUrl = `https://app.matchplay.events/tournaments/${tournamentId}/arenas`;
+        await page.goto(arenaUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const tournamentArenas = await page.evaluate(() => {
+          const arenas = {};
+          const links = document.querySelectorAll('a[href*="/arenas/"]');
+
+          links.forEach(link => {
+            const href = link.getAttribute('href');
+            const name = link.textContent.trim();
+            const match = href.match(/\/arenas\/(\d+)/);
+
+            if (match && name && name.length > 0 && name.length < 100) {
+              const arenaId = parseInt(match[1]);
+              arenas[arenaId] = name;
+            }
+          });
+
+          return arenas;
+        });
+
+        Object.assign(arenaMap, tournamentArenas);
+        scrapedCount++;
+
+        if (scrapedCount % 10 === 0 || scrapedCount === 1) {
+          console.log(`   Scraped ${scrapedCount}/${tournamentIds.length} tournaments (${Object.keys(arenaMap).length} unique machines)...`);
+        }
+      } catch (err) {
+        console.log(`   ⚠️  Failed to scrape tournament ${tournamentId}`);
+      }
+    }
+
+    await browser.close();
+
+    console.log(`\n✅ Found ${Object.keys(arenaMap).length} unique machines!\n`);
+
+    // Save arena map to JSON file
+    const arenaMapPath = path.join(__dirname, 'data', 'arena-names.json');
+    const dataDir = path.join(__dirname, 'data');
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    let existingArenaMap = {};
+    if (fs.existsSync(arenaMapPath)) {
+      existingArenaMap = JSON.parse(fs.readFileSync(arenaMapPath, 'utf8'));
+    }
+
+    // Merge with existing data
+    const mergedArenaMap = { ...existingArenaMap, ...arenaMap };
+    fs.writeFileSync(arenaMapPath, JSON.stringify(mergedArenaMap, null, 2), 'utf8');
+
+    console.log(`💾 Saved arena names to data/arena-names.json\n`);
+
     // Automatically update the analyze.js file
     const analyzeFilePath = path.join(__dirname, 'pages', 'api', 'analyze.js');
     
@@ -184,26 +245,53 @@ async function main() {
 ║   Match Play Analyzer - User Setup Tool   ║
 ╔════════════════════════════════════════════╝
   `);
-  
+
   // Step 1: Get Match Play credentials
   const email = await question('Enter your Match Play email: ');
   const password = await question('Enter your Match Play password: ');
-  
+
   console.log(''); // Blank line
-  
-  // Step 2: Get player profile
-  const profileInput = await question('Enter player profile URL or user ID: ');
-  
-  // Extract user ID from URL or use as-is
-  const match = profileInput.match(/\/users\/(\d+)/);
-  const userId = match ? match[1] : profileInput;
-  
+
+  // Step 2: Get player profiles (support multiple, comma-separated)
+  const profileInput = await question('Enter player profile URL(s) or user ID(s) (comma-separated for multiple): ');
+
+  // Parse input - could be URLs or IDs, comma-separated
+  const inputs = profileInput.split(',').map(s => s.trim()).filter(s => s);
+  const userIds = inputs.map(input => {
+    const match = input.match(/\/users\/(\d+)/);
+    return match ? match[1] : input;
+  });
+
   rl.close();
-  
+
   console.log(''); // Blank line
-  
-  // Run the analysis
-  await getTournamentIds(userId, email, password);
+
+  // Run the analysis for each user sequentially (browsers can't be shared)
+  console.log(`Processing ${userIds.length} user(s)...\n`);
+
+  const results = [];
+  for (const userId of userIds) {
+    try {
+      const tournamentIds = await getTournamentIds(userId, email, password);
+      results.push({ status: 'fulfilled', value: tournamentIds });
+    } catch (error) {
+      results.push({ status: 'rejected', reason: error });
+    }
+  }
+
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`ALL USERS PROCESSED`);
+  console.log(`${'='.repeat(50)}`);
+
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      console.log(`✅ User ${userIds[index]}: ${result.value.length} tournaments`);
+    } else {
+      console.log(`❌ User ${userIds[index]}: Failed - ${result.reason?.message || 'Unknown error'}`);
+    }
+  });
+
+  console.log(`${'='.repeat(50)}\n`);
 }
 
 main().catch(err => {

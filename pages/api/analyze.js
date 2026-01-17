@@ -1,9 +1,23 @@
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 const KNOWN_TOURNAMENT_IDS = {
   '41535': [],
   '41536': [230481, 222863, 214519, 220211, 218842, 217622, 217008, 215549, 214314, 213191, 212135, 208638, 207701, 204274, 205591, 203699, 202577, 199449, 196332, 193226, 191169, 190093, 189876, 188953, 187936, 186922, 186845, 184791, 184361, 175453, 182504, 181482, 180261, 180098, 179305, 176318, 176184, 175338, 175212, 172245, 171686, 171556, 171447, 170461, 169446, 168449, 167620, 167458, 166458, 166424, 165321, 164294, 162417, 161615, 160671, 159838, 157148, 156290]
 };
+
+// Load pre-fetched arena names
+let ARENA_NAMES = {};
+try {
+  const arenaMapPath = path.join(process.cwd(), 'data', 'arena-names.json');
+  if (fs.existsSync(arenaMapPath)) {
+    ARENA_NAMES = JSON.parse(fs.readFileSync(arenaMapPath, 'utf8'));
+    console.log(`✓ Loaded ${Object.keys(ARENA_NAMES).length} arena names from cache`);
+  }
+} catch (err) {
+  console.log('⚠️  Could not load arena names cache');
+}
 
 async function processBatch(items, batchSize, processFn) {
   const results = [];
@@ -15,28 +29,6 @@ async function processBatch(items, batchSize, processFn) {
   return results;
 }
 
-async function fetchArenaNames(tournamentId, axiosConfig) {
-  try {
-    const response = await axios.get(
-      `https://app.matchplay.events/api/tournaments/${tournamentId}/arenas`,
-      axiosConfig
-    );
-
-    const arenas = response.data.data || [];
-    const arenaMap = {};
-
-    arenas.forEach(arena => {
-      if (arena.arenaId && arena.name) {
-        arenaMap[arena.arenaId] = arena.name;
-      }
-    });
-
-    return arenaMap;
-  } catch (err) {
-    console.error(`  Failed to fetch arenas for tournament ${tournamentId}:`, err.message);
-    return {};
-  }
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -132,32 +124,12 @@ export default async function handler(req, res) {
 
     console.log(`\n✓ Found ${allGames.length} games\n`);
 
-    console.log(`Fetching machine names...\n`);
-
-    const arenaMap = {};
-    const tournamentsArray = Array.from(participatedTournamentIds);
-    let fetched = 0;
-
-    for (const tournamentId of tournamentsArray) {
-      const tournamentArenas = await fetchArenaNames(tournamentId, axiosConfig);
-      Object.assign(arenaMap, tournamentArenas);
-
-      fetched++;
-      if (fetched % 5 === 0 || fetched === 1) {
-        console.log(`  Arenas: ${fetched}/${tournamentsArray.length} (${Object.keys(arenaMap).length} machines)...`);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.log(`\n✓ Complete!\n`);
-
     const machineStats = {};
 
     allGames.forEach(game => {
       if (!game.arenaId) return;
 
-      const machineName = arenaMap[game.arenaId] || `Arena ${game.arenaId}`;
+      const machineName = ARENA_NAMES[game.arenaId] || `Arena ${game.arenaId}`;
       
       const resultPositions = game.resultPositions || [];
       const resultPoints = game.resultPoints || [];
