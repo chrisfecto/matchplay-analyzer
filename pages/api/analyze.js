@@ -1,7 +1,5 @@
 import axios from 'axios';
 
-let puppeteer;
-
 const KNOWN_TOURNAMENT_IDS = {
   '41535': [],
   '41536': [230481, 222863, 214519, 220211, 218842, 217622, 217008, 215549, 214314, 213191, 212135, 208638, 207701, 204274, 205591, 203699, 202577, 199449, 196332, 193226, 191169, 190093, 189876, 188953, 187936, 186922, 186845, 184791, 184361, 175453, 182504, 181482, 180261, 180098, 179305, 176318, 176184, 175338, 175212, 172245, 171686, 171556, 171447, 170461, 169446, 168449, 167620, 167458, 166458, 166424, 165321, 164294, 162417, 161615, 160671, 159838, 157148, 156290]
@@ -17,48 +15,25 @@ async function processBatch(items, batchSize, processFn) {
   return results;
 }
 
-async function scrapeArenaNames(tournamentId) {
-  let browser = null;
+async function fetchArenaNames(tournamentId, axiosConfig) {
   try {
-    if (!puppeteer) {
-      puppeteer = require('puppeteer');
-    }
-    
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    const response = await axios.get(
+      `https://app.matchplay.events/api/tournaments/${tournamentId}/arenas`,
+      axiosConfig
+    );
+
+    const arenas = response.data.data || [];
+    const arenaMap = {};
+
+    arenas.forEach(arena => {
+      if (arena.arenaId && arena.name) {
+        arenaMap[arena.arenaId] = arena.name;
+      }
     });
 
-    const page = await browser.newPage();
-    const url = `https://app.matchplay.events/tournaments/${tournamentId}/arenas`;
-    
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const arenaMap = await page.evaluate(() => {
-      const arenas = {};
-      const links = document.querySelectorAll('a[href*="/arenas/"]');
-      
-      links.forEach(link => {
-        const href = link.getAttribute('href');
-        const name = link.textContent.trim();
-        const match = href.match(/\/arenas\/(\d+)/);
-        
-        if (match && name && name.length > 0 && name.length < 100) {
-          const arenaId = parseInt(match[1]);
-          arenas[arenaId] = name;
-        }
-      });
-      
-      return arenas;
-    });
-
-    await browser.close();
     return arenaMap;
   } catch (err) {
-    if (browser) {
-      try { await browser.close(); } catch (e) {}
-    }
+    console.error(`  Failed to fetch arenas for tournament ${tournamentId}:`, err.message);
     return {};
   }
 }
@@ -157,21 +132,21 @@ export default async function handler(req, res) {
 
     console.log(`\n✓ Found ${allGames.length} games\n`);
 
-    console.log(`Scraping machine names...\n`);
-    
+    console.log(`Fetching machine names...\n`);
+
     const arenaMap = {};
     const tournamentsArray = Array.from(participatedTournamentIds);
-    let scraped = 0;
+    let fetched = 0;
 
     for (const tournamentId of tournamentsArray) {
-      const tournamentArenas = await scrapeArenaNames(tournamentId);
+      const tournamentArenas = await fetchArenaNames(tournamentId, axiosConfig);
       Object.assign(arenaMap, tournamentArenas);
-      
-      scraped++;
-      if (scraped % 5 === 0 || scraped === 1) {
-        console.log(`  Arenas: ${scraped}/${tournamentsArray.length} (${Object.keys(arenaMap).length} machines)...`);
+
+      fetched++;
+      if (fetched % 5 === 0 || fetched === 1) {
+        console.log(`  Arenas: ${fetched}/${tournamentsArray.length} (${Object.keys(arenaMap).length} machines)...`);
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
