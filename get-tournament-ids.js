@@ -105,25 +105,38 @@ async function getTournamentIds(userId, page) {
     console.log(`📅 Filtering to 2025 tournaments only...\n`);
     const axios = require('axios');
     const filtered2025 = [];
+    let checkedCount = 0;
 
     for (const tournamentId of allTournamentIds) {
       try {
         const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`);
         const tournament = response.data;
 
-        if (tournament && tournament.started) {
-          const startDate = new Date(tournament.started);
-          if (startDate.getFullYear() === 2025) {
+        // Try different date field names
+        const dateField = tournament.started || tournament.start_time || tournament.startTime || tournament.created_at;
+
+        if (dateField) {
+          const startDate = new Date(dateField);
+          const year = startDate.getFullYear();
+
+          // Debug first tournament to see what we're getting
+          if (checkedCount === 0) {
+            console.log(`   Debug - First tournament date: ${dateField} -> Year: ${year}`);
+          }
+
+          if (year === 2025) {
             filtered2025.push(tournamentId);
           }
         }
 
+        checkedCount++;
         // Show progress every 50 tournaments
-        if ((filtered2025.length + 1) % 50 === 0) {
-          console.log(`   Checked ${filtered2025.length}/${allTournamentIds.length} tournaments...`);
+        if (checkedCount % 50 === 0) {
+          console.log(`   Checked ${checkedCount}/${allTournamentIds.length} tournaments... (Found ${filtered2025.length} from 2025)`);
         }
       } catch (err) {
         // Skip tournaments that can't be fetched
+        checkedCount++;
       }
 
       // Small delay to avoid rate limiting
