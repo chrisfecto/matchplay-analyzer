@@ -51,6 +51,18 @@ try {
   console.log('⚠️  Could not load arena names cache');
 }
 
+// Load Wizard World approved tournament machines
+let WIZARD_WORLD_MACHINES = [];
+try {
+  const wizardWorldPath = path.join(process.cwd(), 'data', 'wizard-world-machines.json');
+  if (fs.existsSync(wizardWorldPath)) {
+    WIZARD_WORLD_MACHINES = JSON.parse(fs.readFileSync(wizardWorldPath, 'utf8'));
+    console.log(`✓ Loaded ${WIZARD_WORLD_MACHINES.length} approved Wizard World machines`);
+  }
+} catch (err) {
+  console.log('⚠️  Could not load Wizard World machines list');
+}
+
 async function processBatch(items, batchSize, processFn) {
   const results = [];
   for (let i = 0; i < items.length; i += batchSize) {
@@ -248,6 +260,11 @@ export default async function handler(req, res) {
 
       // Only include machines YOU have played
       if (!yourStats) return;
+
+      // Only include machines available at Wizard World
+      if (WIZARD_WORLD_MACHINES.length > 0 && !WIZARD_WORLD_MACHINES.includes(machine)) {
+        return;
+      }
 
       const advantage = calculateAdvantageScore(yourStats, oppStats);
 
