@@ -1,0 +1,266 @@
+import axios from 'axios';
+
+let puppeteer;
+
+const KNOWN_TOURNAMENT_IDS = {
+  '41535': []
+};
+
+async function processBatch(items, batchSize, processFn) {
+  const results = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(processFn));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+async function scrapeArenaNames(tournamentId) {
+  let browser = null;
+  try {
+    if (!puppeteer) {
+      puppeteer = require('puppeteer');
+    }
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    const page = await browser.newPage();
+    const url = `https://app.matchplay.events/tournaments/${tournamentId}/arenas`;
+    
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const arenaMap = await page.evaluate(() => {
+      const arenas = {};
+      const links = document.querySelectorAll('a[href*="/arenas/"]');
+      
+      links.forEach(link => {
+        const href = link.getAttribute('href');
+        const name = link.textContent.trim();
+        const match = href.match(/\/arenas\/(\d+)/);
+        
+        if (match && name && name.length > 0 && name.length < 100) {
+          const arenaId = parseInt(match[1]);
+          arenas[arenaId] = name;
+        }
+      });
+      
+      return arenas;
+    });
+
+    await browser.close();
+    return arenaMap;
+  } catch (err) {
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
+    return {};
+  }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  const tournamentIds = KNOWN_TOURNAMENT_IDS[userId];
+
+  if (!tournamentIds) {
+    return res.status(404).json({
+      error: `User ${userId} not configured. Please run the setup script to add this user.`
+    });
+  }
+
+  if (tournamentIds.length === 0) {
+    return res.status(404).json({
+      error: `No tournaments configured for user ${userId}.`
+    });
+  }
+
+  const BASE_URL = "https://app.matchplay.events/api";
+  const axiosConfig = {
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    httpsAgent: new (require('https').Agent)({
+      rejectUnauthorized: false
+    })
+  };
+
+  try {
+    console.log(`\nAnalyzing player ${userId}...`);
+
+    const profileResponse = await axios.get(`${BASE_URL}/users/${userId}`, axiosConfig);
+    const playerName = profileResponse.data.user?.name || 'Unknown Player';
+    console.log(`Player: ${playerName}\n`);
+    console.log(`Analyzing ${tournamentIds.length} tournaments...\n`);
+
+    const allGames = [];
+    const participatedTournamentIds = new Set();
+    let processed = 0;
+
+    const processTournament = async (tournamentId) => {
+      try {
+        const gamesResponse = await axios.get(
+          `${BASE_URL}/tournaments/${tournamentId}/games`,
+          axiosConfig
+        );
+
+        const games = gamesResponse.data.data || [];
+        const userGames = [];
+
+        games.forEach((game) => {
+          const userIds = game.userIds || [];
+          const userIdInt = parseInt(userId);
+          const userIndex = userIds.indexOf(userIdInt);
+          
+          if (userIndex !== -1) {
+            userGames.push({
+              ...game,
+              tournamentId,
+              userIndex
+            });
+          }
+        });
+
+        processed++;
+        if (processed % 10 === 0) {
+          console.log(`  Games: ${processed}/${tournamentIds.length}...`);
+        }
+
+        return { tournamentId, userGames };
+      } catch (err) {
+        return { tournamentId, userGames: [] };
+      }
+    };
+
+    const results = await processBatch(tournamentIds, 10, processTournament);
+
+    results.forEach(result => {
+      if (result.userGames.length > 0) {
+        allGames.push(...result.userGames);
+        participatedTournamentIds.add(result.tournamentId);
+      }
+    });
+
+    console.log(`\n✓ Found ${allGames.length} games\n`);
+
+    console.log(`Scraping machine names...\n`);
+    
+    const arenaMap = {};
+    const tournamentsArray = Array.from(participatedTournamentIds);
+    let scraped = 0;
+
+    for (const tournamentId of tournamentsArray) {
+      const tournamentArenas = await scrapeArenaNames(tournamentId);
+      Object.assign(arenaMap, tournamentArenas);
+      
+      scraped++;
+      if (scraped % 5 === 0 || scraped === 1) {
+        console.log(`  Arenas: ${scraped}/${tournamentsArray.length} (${Object.keys(arenaMap).length} machines)...`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`\n✓ Complete!\n`);
+
+    const machineStats = {};
+
+    allGames.forEach(game => {
+      if (!game.arenaId) return;
+
+      const machineName = arenaMap[game.arenaId] || `Arena ${game.arenaId}`;
+      
+      const resultPositions = game.resultPositions || [];
+      const resultPoints = game.resultPoints || [];
+      const playerIdAtIndex = game.playerIds?.[game.userIndex];
+      
+      let position = null;
+      let points = 0;
+      
+      if (playerIdAtIndex && resultPositions.length > 0) {
+        const positionIndex = resultPositions.indexOf(playerIdAtIndex);
+        if (positionIndex !== -1) {
+          position = positionIndex + 1;
+        }
+      }
+      
+      if (resultPoints.length > game.userIndex) {
+        points = resultPoints[game.userIndex] || 0;
+      }
+
+      if (!machineStats[machineName]) {
+        machineStats[machineName] = {
+          gamesPlayed: 0,
+          totalPoints: 0,
+          wins: 0,
+          positions: [],
+          tournaments: new Set(),
+          arenaId: game.arenaId
+        };
+      }
+
+      machineStats[machineName].gamesPlayed++;
+      machineStats[machineName].totalPoints += points;
+      machineStats[machineName].tournaments.add(game.tournamentId);
+      
+      if (position) {
+        machineStats[machineName].positions.push(position);
+        if (position === 1) {
+          machineStats[machineName].wins++;
+        }
+      }
+    });
+
+    const machineRankings = Object.entries(machineStats).map(([machine, stats]) => {
+      const avgPosition = stats.positions.length > 0
+        ? stats.positions.reduce((a, b) => a + b, 0) / stats.positions.length
+        : 0;
+      const avgPoints = stats.gamesPlayed > 0
+        ? stats.totalPoints / stats.gamesPlayed
+        : 0;
+      const winRate = stats.gamesPlayed > 0
+        ? (stats.wins / stats.gamesPlayed) * 100
+        : 0;
+
+      return {
+        machine,
+        gamesPlayed: stats.gamesPlayed,
+        avgPosition,
+        avgPoints,
+        wins: stats.wins,
+        winRate,
+        tournaments: stats.tournaments.size,
+        arenaId: stats.arenaId
+      };
+    });
+
+    machineRankings.sort((a, b) => a.avgPosition - b.avgPosition || b.winRate - a.winRate);
+
+    res.status(200).json({
+      playerName,
+      userId,
+      machineRankings,
+      totalGamesAnalyzed: allGames.length,
+      participatedTournaments: participatedTournamentIds.size,
+      uniqueMachines: machineRankings.length,
+      totalWins: machineRankings.reduce((sum, m) => sum + m.wins, 0)
+    });
+
+  } catch (err) {
+    console.error('\n❌ Error:', err.message);
+    res.status(500).json({ error: err.message || 'Analysis failed' });
+  }
+}

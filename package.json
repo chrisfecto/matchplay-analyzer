@@ -1,0 +1,25 @@
+{
+  "name": "matchplay-analyzer",
+  "version": "1.0.0",
+  "description": "Analyze pinball performance across Match Play Events tournaments",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup": "node get-tournament-ids.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "lucide-react": "^0.294.0",
+    "next": "^14.0.0",
+    "playwright": "^1.57.0",
+    "puppeteer": "^24.35.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
