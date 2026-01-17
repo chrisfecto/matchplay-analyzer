@@ -1,33 +1,37 @@
-import React, { useState } from 'react';
-import { BarChart3, TrendingUp, Award, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BarChart3, TrendingUp, Award, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Home, Users } from 'lucide-react';
 
 export default function PinballAnalyzer() {
-  const [profileUrl, setProfileUrl] = useState('');
+  const [view, setView] = useState('selection'); // 'selection' or 'results'
+  const [players, setPlayers] = useState([]);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'avgPosition', direction: 'asc' });
 
-  const extractUserId = (input) => {
-    const match = input.match(/\/users\/(\d+)/);
-    if (match) return match[1];
-    if (/^\d+$/.test(input)) return input;
-    return null;
+  useEffect(() => {
+    fetchPlayers();
+  }, []);
+
+  const fetchPlayers = async () => {
+    try {
+      const response = await fetch('/api/players');
+      const data = await response.json();
+      setPlayers(data.players);
+    } catch (err) {
+      console.error('Failed to fetch players:', err);
+    }
   };
 
-  const analyzePlayer = async () => {
-    const userId = extractUserId(profileUrl);
-
-    if (!userId) {
-      setError('Please enter a valid Match Play profile URL or user ID');
-      return;
-    }
-
+  const analyzePlayer = async (player) => {
+    setSelectedPlayer(player);
     setLoading(true);
     setError('');
     setProgress('Starting analysis...');
     setResults(null);
+    setView('results');
 
     try {
       const response = await fetch('/api/analyze', {
@@ -35,7 +39,7 @@ export default function PinballAnalyzer() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ userId: player.id })
       });
 
       if (!response.ok) {
@@ -55,6 +59,14 @@ export default function PinballAnalyzer() {
     }
   };
 
+  const goBack = () => {
+    setView('selection');
+    setResults(null);
+    setError('');
+    setProgress('');
+    setSelectedPlayer(null);
+  };
+
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -65,13 +77,13 @@ export default function PinballAnalyzer() {
 
   const getSortedMachines = () => {
     if (!results || !results.machineRankings) return [];
-    
+
     const sorted = [...results.machineRankings];
-    
+
     sorted.sort((a, b) => {
       let aVal = a[sortConfig.key];
       let bVal = b[sortConfig.key];
-      
+
       if (sortConfig.key === 'machine') {
         aVal = (aVal || '').toLowerCase();
         bVal = (bVal || '').toLowerCase();
@@ -79,7 +91,7 @@ export default function PinballAnalyzer() {
         aVal = aVal || 0;
         bVal = bVal || 0;
       }
-      
+
       if (aVal < bVal) {
         return sortConfig.direction === 'asc' ? -1 : 1;
       }
@@ -88,7 +100,7 @@ export default function PinballAnalyzer() {
       }
       return 0;
     });
-    
+
     return sorted;
   };
 
@@ -96,11 +108,62 @@ export default function PinballAnalyzer() {
     if (sortConfig.key !== columnKey) {
       return <ArrowUpDown className="w-4 h-4 opacity-50" />;
     }
-    return sortConfig.direction === 'asc' 
+    return sortConfig.direction === 'asc'
       ? <ArrowUp className="w-4 h-4" />
       : <ArrowDown className="w-4 h-4" />;
   };
 
+  // Player Selection View
+  if (view === 'selection') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12 pt-12">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <BarChart3 className="w-16 h-16 text-purple-400" />
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Match Play Analyzer
+              </h1>
+            </div>
+            <p className="text-xl text-purple-200">Select a player to analyze their performance</p>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl">
+            <div className="flex items-center gap-2 mb-6">
+              <Users className="w-6 h-6 text-purple-400" />
+              <h2 className="text-2xl font-bold">Players</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {players.map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => analyzePlayer(player)}
+                  className="group relative bg-white/5 hover:bg-white/10 border border-white/20 hover:border-purple-400 rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-purple-500/20"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-lg group-hover:text-purple-300 transition-colors">
+                        {player.name}
+                      </div>
+                      <div className="text-sm text-purple-300/70">ID: {player.id}</div>
+                    </div>
+                    <TrendingUp className="w-5 h-5 text-purple-400 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-center text-sm text-purple-300 mt-8 pb-8">
+            <p>Powered by Match Play Events API</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Results View
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
@@ -109,65 +172,44 @@ export default function PinballAnalyzer() {
             <BarChart3 className="w-12 h-12 text-purple-400" />
             <h1 className="text-4xl font-bold">Match Play Analyzer</h1>
           </div>
-          <p className="text-purple-200">Analyze pinball performance across all tournaments</p>
+          <button
+            onClick={goBack}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <Home className="w-4 h-4" />
+            Back to Player Selection
+          </button>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Match Play Profile URL or User ID
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={profileUrl}
-                  onChange={(e) => setProfileUrl(e.target.value)}
-                  placeholder="https://app.matchplay.events/users/41535 or 41535"
-                  className="flex-1 px-4 py-3 bg-white/20 border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-white/50"
-                  disabled={loading}
-                  onKeyPress={(e) => e.key === 'Enter' && !loading && analyzePlayer()}
-                />
-                <button
-                  onClick={analyzePlayer}
-                  disabled={loading || !profileUrl}
-                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Analyzing
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="w-5 h-5" />
-                      Analyze
-                    </>
-                  )}
-                </button>
-              </div>
+        {loading && (
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6">
+            <div className="w-full bg-white/10 rounded-full h-2.5 mb-2">
+              <div
+                className="bg-purple-500 h-2.5 rounded-full transition-all duration-300 animate-pulse"
+                style={{ width: '50%' }}
+              ></div>
             </div>
+            <p className="text-sm text-purple-300 text-center flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {progress}
+            </p>
+            <p className="text-xs text-purple-400 text-center mt-1">
+              Analyzing {selectedPlayer?.name}'s performance...
+            </p>
           </div>
-          
-          {loading && (
-            <div className="mt-4">
-              <div className="w-full bg-white/10 rounded-full h-2.5 mb-2">
-                <div 
-                  className="bg-purple-500 h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: '50%' }}
-                ></div>
-              </div>
-              <p className="text-sm text-purple-300 text-center">{progress}</p>
-              <p className="text-xs text-purple-400 text-center mt-1">
-                Analysis takes ~13 seconds to scrape machine names from all tournaments
-              </p>
-            </div>
-          )}
-          
-          {error && (
-            <p className="mt-3 text-sm text-red-400">{error}</p>
-          )}
-        </div>
+        )}
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-lg rounded-xl p-6 mb-6">
+            <p className="text-red-400">{error}</p>
+            <button
+              onClick={goBack}
+              className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        )}
 
         {results && (
           <div className="space-y-6">
@@ -177,19 +219,19 @@ export default function PinballAnalyzer() {
                 {results.playerName}
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white/5 rounded-lg p-4">
+                <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg p-4 border border-purple-500/30">
                   <div className="text-3xl font-bold text-purple-400">{results.totalGamesAnalyzed || 0}</div>
                   <div className="text-sm text-purple-200">Total Games</div>
                 </div>
-                <div className="bg-white/5 rounded-lg p-4">
+                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg p-4 border border-blue-500/30">
                   <div className="text-3xl font-bold text-blue-400">{results.participatedTournaments || 0}</div>
                   <div className="text-sm text-blue-200">Tournaments</div>
                 </div>
-                <div className="bg-white/5 rounded-lg p-4">
+                <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-lg p-4 border border-green-500/30">
                   <div className="text-3xl font-bold text-green-400">{results.uniqueMachines || 0}</div>
                   <div className="text-sm text-green-200">Unique Machines</div>
                 </div>
-                <div className="bg-white/5 rounded-lg p-4">
+                <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 rounded-lg p-4 border border-yellow-500/30">
                   <div className="text-3xl font-bold text-yellow-400">{results.totalWins || 0}</div>
                   <div className="text-sm text-yellow-200">Total Wins</div>
                 </div>
@@ -204,7 +246,7 @@ export default function PinballAnalyzer() {
                   <thead>
                     <tr className="border-b border-white/20">
                       <th className="text-left py-3 px-2">Rank</th>
-                      <th 
+                      <th
                         className="text-left py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('machine')}
                       >
@@ -213,7 +255,7 @@ export default function PinballAnalyzer() {
                           <SortIcon columnKey="machine" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('gamesPlayed')}
                       >
@@ -222,7 +264,7 @@ export default function PinballAnalyzer() {
                           <SortIcon columnKey="gamesPlayed" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('avgPosition')}
                       >
@@ -231,7 +273,7 @@ export default function PinballAnalyzer() {
                           <SortIcon columnKey="avgPosition" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('wins')}
                       >
@@ -240,7 +282,7 @@ export default function PinballAnalyzer() {
                           <SortIcon columnKey="wins" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('winRate')}
                       >
@@ -249,7 +291,7 @@ export default function PinballAnalyzer() {
                           <SortIcon columnKey="winRate" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
                         onClick={() => handleSort('avgPoints')}
                       >
@@ -262,9 +304,9 @@ export default function PinballAnalyzer() {
                   </thead>
                   <tbody>
                     {getSortedMachines().map((machine, idx) => (
-                      <tr key={idx} className="border-b border-white/10 hover:bg-white/5">
+                      <tr key={idx} className="border-b border-white/10 hover:bg-white/5 transition-colors">
                         <td className="py-3 px-2 font-bold text-purple-400">{idx + 1}</td>
-                        <td className="py-3 px-2">{machine.machine || 'Unknown'}</td>
+                        <td className="py-3 px-2 font-medium">{machine.machine || 'Unknown'}</td>
                         <td className="py-3 px-2 text-right">{machine.gamesPlayed || 0}</td>
                         <td className="py-3 px-2 text-right">
                           {machine.avgPosition ? machine.avgPosition.toFixed(2) : 'N/A'}
@@ -290,10 +332,10 @@ export default function PinballAnalyzer() {
                   .sort((a, b) => (b.gamesPlayed || 0) - (a.gamesPlayed || 0))
                   .slice(0, 10)
                   .map((machine, idx) => (
-                    <div key={idx} className="flex items-center gap-4">
+                    <div key={idx} className="flex items-center gap-4 bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-colors">
                       <div className="text-2xl font-bold text-purple-400 w-8">{idx + 1}</div>
                       <div className="flex-1">
-                        <div className="font-semibold">{machine.machine || 'Unknown'}</div>
+                        <div className="font-semibold text-lg">{machine.machine || 'Unknown'}</div>
                         <div className="text-sm text-purple-200">
                           {machine.gamesPlayed || 0} games • Avg Position: {machine.avgPosition ? machine.avgPosition.toFixed(2) : 'N/A'} • Win Rate: {machine.winRate ? machine.winRate.toFixed(1) : '0'}%
                         </div>
@@ -307,7 +349,6 @@ export default function PinballAnalyzer() {
 
         <div className="text-center text-sm text-purple-300 mt-8 pb-8">
           <p>Powered by Match Play Events API</p>
-          <p className="mt-2">Analysis typically takes ~13 seconds to scrape machine names from all tournaments</p>
         </div>
       </div>
     </div>
