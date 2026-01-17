@@ -44,28 +44,84 @@ async function getTournamentIds(userId, email, password) {
     
     const playedUrl = `https://app.matchplay.events/users/${userId}/played`;
     console.log(`\n🔍 Navigating to player profile: ${playedUrl}\n`);
-    await page.goto(playedUrl);
+
+    try {
+      await page.goto(playedUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    } catch (error) {
+      console.log('⚠️  Initial navigation failed, trying alternative approach...');
+      // Try navigating to base user profile first
+      await page.goto(`https://app.matchplay.events/users/${userId}`, { waitUntil: 'domcontentloaded' });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Then click on the "played" tab if it exists
+      const playedTab = await page.$('a[href*="/played"]');
+      if (playedTab) {
+        await playedTab.click();
+      } else {
+        throw new Error('Could not access played tournaments page');
+      }
+    }
+
     await page.waitForLoadState('networkidle');
     await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    console.log('📊 Extracting tournament IDs...\n');
-    const tournamentIds = await page.evaluate(() => {
-      const tournaments = [];
-      const links = document.querySelectorAll('a[href^="/tournaments/"]');
-      
-      links.forEach(link => {
-        const href = link.getAttribute('href');
-        const match = href.match(/^\/tournaments\/(\d+)/);
-        if (match) {
-          const id = parseInt(match[1]);
-          if (!tournaments.includes(id)) {
-            tournaments.push(id);
+
+    console.log('📊 Extracting tournament IDs from all pages...\n');
+
+    const allTournamentIds = [];
+    let currentPage = 1;
+    let hasMorePages = true;
+
+    while (hasMorePages) {
+      console.log(`   Page ${currentPage}...`);
+
+      // Extract tournament IDs from current page
+      const pageIds = await page.evaluate(() => {
+        const tournaments = [];
+        const links = document.querySelectorAll('a[href^="/tournaments/"]');
+
+        links.forEach(link => {
+          const href = link.getAttribute('href');
+          const match = href.match(/^\/tournaments\/(\d+)/);
+          if (match) {
+            const id = parseInt(match[1]);
+            if (!tournaments.includes(id)) {
+              tournaments.push(id);
+            }
           }
+        });
+
+        return tournaments;
+      });
+
+      // Add to our collection
+      pageIds.forEach(id => {
+        if (!allTournamentIds.includes(id)) {
+          allTournamentIds.push(id);
         }
       });
-      
-      return tournaments;
-    });
+
+      // Check if there's a next page button
+      const nextButton = await page.$('button:has-text("Next")');
+
+      if (nextButton) {
+        const isDisabled = await nextButton.isDisabled();
+
+        if (!isDisabled) {
+          console.log('   Found next page button, clicking...');
+          await nextButton.click();
+          await page.waitForLoadState('networkidle');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          currentPage++;
+        } else {
+          console.log('   Next button is disabled - reached last page.');
+          hasMorePages = false;
+        }
+      } else {
+        console.log('   No next button found.');
+        hasMorePages = false;
+      }
+    }
+
+    const tournamentIds = allTournamentIds;
     
     await browser.close();
     
