@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Award, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Home, Users } from 'lucide-react';
+import { BarChart3, Users, Loader2, Award, ChevronDown, ChevronUp, Swords, Target } from 'lucide-react';
 
-export default function PinballAnalyzer() {
-  const [view, setView] = useState('selection'); // 'selection' or 'results'
+export default function TournamentPrep() {
+  const [step, setStep] = useState('select-player'); // 'select-player', 'select-opponent', 'results'
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [selectedOpponent, setSelectedOpponent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'avgPosition', direction: 'asc' });
+  const [expandedMachine, setExpandedMachine] = useState(null);
 
   useEffect(() => {
     fetchPlayers();
@@ -25,120 +25,95 @@ export default function PinballAnalyzer() {
     }
   };
 
-  const analyzePlayer = async (player) => {
+  const selectPlayer = (player) => {
     setSelectedPlayer(player);
+    setStep('select-opponent');
+  };
+
+  const selectOpponent = async (opponent) => {
+    setSelectedOpponent(opponent);
     setLoading(true);
     setError('');
-    setProgress('Starting analysis...');
-    setResults(null);
-    setView('results');
+    setStep('results');
 
     try {
-      const response = await fetch('/api/analyze', {
+      const response = await fetch('/api/compare', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: player.id })
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          opponentId: opponent.id
+        })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to analyze player');
+        throw new Error(errorData.error || 'Failed to compare players');
       }
 
       const data = await response.json();
       setResults(data);
-      setProgress('Analysis complete!');
 
     } catch (err) {
-      setError(err.message || 'An error occurred during analysis');
-      setProgress('');
+      setError(err.message || 'An error occurred during comparison');
     } finally {
       setLoading(false);
     }
   };
 
-  const goBack = () => {
-    setView('selection');
+  const reset = () => {
+    setStep('select-player');
+    setSelectedPlayer(null);
+    setSelectedOpponent(null);
     setResults(null);
     setError('');
-    setProgress('');
-    setSelectedPlayer(null);
+    setExpandedMachine(null);
   };
 
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+  const getAdvantageColor = (score) => {
+    if (score >= 80) return 'text-green-400 bg-green-500/20 border-green-500/50';
+    if (score >= 65) return 'text-blue-400 bg-blue-500/20 border-blue-500/50';
+    if (score >= 50) return 'text-purple-400 bg-purple-500/20 border-purple-500/50';
+    if (score >= 35) return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
+    return 'text-red-400 bg-red-500/20 border-red-500/50';
   };
 
-  const getSortedMachines = () => {
-    if (!results || !results.machineRankings) return [];
-
-    const sorted = [...results.machineRankings];
-
-    sorted.sort((a, b) => {
-      let aVal = a[sortConfig.key];
-      let bVal = b[sortConfig.key];
-
-      if (sortConfig.key === 'machine') {
-        aVal = (aVal || '').toLowerCase();
-        bVal = (bVal || '').toLowerCase();
-      } else {
-        aVal = aVal || 0;
-        bVal = bVal || 0;
-      }
-
-      if (aVal < bVal) {
-        return sortConfig.direction === 'asc' ? -1 : 1;
-      }
-      if (aVal > bVal) {
-        return sortConfig.direction === 'asc' ? 1 : -1;
-      }
-      return 0;
-    });
-
-    return sorted;
+  const getAdvantageEmoji = (score) => {
+    if (score >= 80) return '🔥';
+    if (score >= 65) return '💪';
+    if (score >= 50) return '👍';
+    if (score >= 35) return '⚖️';
+    return '⚠️';
   };
 
-  const SortIcon = ({ columnKey }) => {
-    if (sortConfig.key !== columnKey) {
-      return <ArrowUpDown className="w-4 h-4 opacity-50" />;
-    }
-    return sortConfig.direction === 'asc'
-      ? <ArrowUp className="w-4 h-4" />
-      : <ArrowDown className="w-4 h-4" />;
-  };
-
-  // Player Selection View
-  if (view === 'selection') {
+  // Step 1: Select Your Player
+  if (step === 'select-player') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12 pt-12">
             <div className="flex items-center justify-center gap-3 mb-4">
-              <BarChart3 className="w-16 h-16 text-purple-400" />
+              <Target className="w-16 h-16 text-purple-400" />
               <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Match Play Analyzer
+                Tournament Prep
               </h1>
             </div>
-            <p className="text-xl text-purple-200">Select a player to analyze their performance</p>
+            <p className="text-xl text-purple-200">Find your best machine picks against any opponent</p>
           </div>
 
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl">
             <div className="flex items-center gap-2 mb-6">
               <Users className="w-6 h-6 text-purple-400" />
-              <h2 className="text-2xl font-bold">Players</h2>
+              <h2 className="text-2xl font-bold">Select Yourself</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {players.map((player) => (
                 <button
                   key={player.id}
-                  onClick={() => analyzePlayer(player)}
+                  onClick={() => selectPlayer(player)}
                   className="group relative bg-white/5 hover:bg-white/10 border border-white/20 hover:border-purple-400 rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-purple-500/20"
                 >
                   <div className="flex items-center justify-between">
@@ -148,65 +123,105 @@ export default function PinballAnalyzer() {
                       </div>
                       <div className="text-sm text-purple-300/70">ID: {player.id}</div>
                     </div>
-                    <TrendingUp className="w-5 h-5 text-purple-400 opacity-50 group-hover:opacity-100 transition-opacity" />
+                    <Award className="w-5 h-5 text-purple-400 opacity-50 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="text-center text-sm text-purple-300 mt-8 pb-8">
-            <p>Powered by Match Play Events API</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Results View
+  // Step 2: Select Opponent
+  if (step === 'select-opponent') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8 pt-12">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <Swords className="w-12 h-12 text-purple-400" />
+              <h1 className="text-4xl font-bold">Select Your Opponent</h1>
+            </div>
+            <p className="text-purple-200 mb-4">Playing as: <span className="font-bold text-purple-400">{selectedPlayer?.name}</span></p>
+            <button
+              onClick={reset}
+              className="text-sm text-purple-300 hover:text-purple-200 underline"
+            >
+              Change player
+            </button>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl">
+            <div className="flex items-center gap-2 mb-6">
+              <Users className="w-6 h-6 text-red-400" />
+              <h2 className="text-2xl font-bold">Opponent</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {players.filter(p => p.id !== selectedPlayer?.id).map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => selectOpponent(player)}
+                  className="group relative bg-white/5 hover:bg-white/10 border border-white/20 hover:border-red-400 rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-red-500/20"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-lg group-hover:text-red-300 transition-colors">
+                        {player.name}
+                      </div>
+                      <div className="text-sm text-purple-300/70">ID: {player.id}</div>
+                    </div>
+                    <Swords className="w-5 h-5 text-red-400 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 3: Results
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8 pt-8">
           <div className="flex items-center justify-center gap-3 mb-4">
             <BarChart3 className="w-12 h-12 text-purple-400" />
-            <h1 className="text-4xl font-bold">Match Play Analyzer</h1>
+            <h1 className="text-4xl font-bold">Machine Recommendations</h1>
+          </div>
+          <div className="flex items-center justify-center gap-4 text-lg mb-4">
+            <span className="text-purple-400 font-bold">{selectedPlayer?.name}</span>
+            <span className="text-purple-300">vs</span>
+            <span className="text-red-400 font-bold">{selectedOpponent?.name}</span>
           </div>
           <button
-            onClick={goBack}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            onClick={reset}
+            className="text-sm text-purple-300 hover:text-purple-200 underline"
           >
-            <Home className="w-4 h-4" />
-            Back to Player Selection
+            Start over
           </button>
         </div>
 
         {loading && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6">
-            <div className="w-full bg-white/10 rounded-full h-2.5 mb-2">
-              <div
-                className="bg-purple-500 h-2.5 rounded-full transition-all duration-300 animate-pulse"
-                style={{ width: '50%' }}
-              ></div>
-            </div>
-            <p className="text-sm text-purple-300 text-center flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {progress}
-            </p>
-            <p className="text-xs text-purple-400 text-center mt-1">
-              Analyzing {selectedPlayer?.name}'s performance...
-            </p>
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 mb-6 text-center">
+            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-purple-400" />
+            <p className="text-lg text-purple-300">Analyzing matchup...</p>
+            <p className="text-sm text-purple-400 mt-2">Comparing performance across all machines</p>
           </div>
         )}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-lg rounded-xl p-6 mb-6">
-            <p className="text-red-400">{error}</p>
+            <p className="text-red-400 mb-4">{error}</p>
             <button
-              onClick={goBack}
-              className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors"
+              onClick={reset}
+              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors"
             >
-              Go Back
+              Start Over
             </button>
           </div>
         )}
@@ -214,141 +229,84 @@ export default function PinballAnalyzer() {
         {results && (
           <div className="space-y-6">
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6">
-              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <Award className="w-6 h-6 text-yellow-400" />
-                {results.playerName}
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg p-4 border border-purple-500/30">
-                  <div className="text-3xl font-bold text-purple-400">{results.totalGamesAnalyzed || 0}</div>
-                  <div className="text-sm text-purple-200">Total Games</div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-purple-500/20 rounded-lg p-4 border border-purple-500/30">
+                  <div className="text-sm text-purple-200 mb-1">Your Stats</div>
+                  <div className="text-2xl font-bold text-purple-400">{results.player.totalGames} games</div>
+                  <div className="text-sm text-purple-300">{results.player.machinesPlayed} machines</div>
                 </div>
-                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg p-4 border border-blue-500/30">
-                  <div className="text-3xl font-bold text-blue-400">{results.participatedTournaments || 0}</div>
-                  <div className="text-sm text-blue-200">Tournaments</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-lg p-4 border border-green-500/30">
-                  <div className="text-3xl font-bold text-green-400">{results.uniqueMachines || 0}</div>
-                  <div className="text-sm text-green-200">Unique Machines</div>
-                </div>
-                <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 rounded-lg p-4 border border-yellow-500/30">
-                  <div className="text-3xl font-bold text-yellow-400">{results.totalWins || 0}</div>
-                  <div className="text-sm text-yellow-200">Total Wins</div>
+                <div className="bg-red-500/20 rounded-lg p-4 border border-red-500/30">
+                  <div className="text-sm text-red-200 mb-1">Opponent Stats</div>
+                  <div className="text-2xl font-bold text-red-400">{results.opponent.totalGames} games</div>
+                  <div className="text-sm text-red-300">{results.opponent.machinesPlayed} machines</div>
                 </div>
               </div>
             </div>
 
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6">
-              <h3 className="text-xl font-bold mb-4">Machine Performance Rankings</h3>
-              <p className="text-sm text-purple-300 mb-4">Click any column header to sort</p>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/20">
-                      <th className="text-left py-3 px-2">Rank</th>
-                      <th
-                        className="text-left py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('machine')}
-                      >
-                        <div className="flex items-center gap-2">
-                          Machine
-                          <SortIcon columnKey="machine" />
-                        </div>
-                      </th>
-                      <th
-                        className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('gamesPlayed')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Games
-                          <SortIcon columnKey="gamesPlayed" />
-                        </div>
-                      </th>
-                      <th
-                        className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('avgPosition')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Avg Pos
-                          <SortIcon columnKey="avgPosition" />
-                        </div>
-                      </th>
-                      <th
-                        className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('wins')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Wins
-                          <SortIcon columnKey="wins" />
-                        </div>
-                      </th>
-                      <th
-                        className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('winRate')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Win %
-                          <SortIcon columnKey="winRate" />
-                        </div>
-                      </th>
-                      <th
-                        className="text-right py-3 px-2 cursor-pointer hover:bg-white/5 select-none"
-                        onClick={() => handleSort('avgPoints')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Avg Pts
-                          <SortIcon columnKey="avgPoints" />
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getSortedMachines().map((machine, idx) => (
-                      <tr key={idx} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                        <td className="py-3 px-2 font-bold text-purple-400">{idx + 1}</td>
-                        <td className="py-3 px-2 font-medium">{machine.machine || 'Unknown'}</td>
-                        <td className="py-3 px-2 text-right">{machine.gamesPlayed || 0}</td>
-                        <td className="py-3 px-2 text-right">
-                          {machine.avgPosition ? machine.avgPosition.toFixed(2) : 'N/A'}
-                        </td>
-                        <td className="py-3 px-2 text-right">{machine.wins || 0}</td>
-                        <td className="py-3 px-2 text-right">
-                          {machine.winRate ? machine.winRate.toFixed(1) : '0.0'}%
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          {machine.avgPoints ? machine.avgPoints.toFixed(1) : '0.0'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+              <h2 className="text-2xl font-bold mb-2">Recommended Machines</h2>
+              <p className="text-purple-300 text-sm mb-6">Sorted by your advantage - pick from the top!</p>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6">
-              <h3 className="text-xl font-bold mb-4">Most Played Machines</h3>
-              <div className="space-y-3">
-                {results.machineRankings
-                  .sort((a, b) => (b.gamesPlayed || 0) - (a.gamesPlayed || 0))
-                  .slice(0, 10)
-                  .map((machine, idx) => (
-                    <div key={idx} className="flex items-center gap-4 bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-colors">
-                      <div className="text-2xl font-bold text-purple-400 w-8">{idx + 1}</div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-lg">{machine.machine || 'Unknown'}</div>
-                        <div className="text-sm text-purple-200">
-                          {machine.gamesPlayed || 0} games • Avg Position: {machine.avgPosition ? machine.avgPosition.toFixed(2) : 'N/A'} • Win Rate: {machine.winRate ? machine.winRate.toFixed(1) : '0'}%
+              <div className="space-y-2">
+                {results.recommendations.map((rec, idx) => (
+                  <div key={idx} className="border border-white/20 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setExpandedMachine(expandedMachine === idx ? null : idx)}
+                      className="w-full bg-white/5 hover:bg-white/10 transition-colors p-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="text-2xl font-bold text-purple-400 w-8">{idx + 1}</div>
+                        <div className="flex-1 text-left">
+                          <div className="font-bold text-lg flex items-center gap-2">
+                            {rec.machine}
+                            <span className="text-2xl">{getAdvantageEmoji(rec.advantageScore)}</span>
+                          </div>
+                          <div className="text-sm text-purple-300">{rec.reason}</div>
+                        </div>
+                        <div className={`px-4 py-2 rounded-lg border font-bold ${getAdvantageColor(rec.advantageScore)}`}>
+                          {rec.advantageScore}/100
+                        </div>
+                        {expandedMachine === idx ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                      </div>
+                    </button>
+
+                    {expandedMachine === idx && (
+                      <div className="bg-white/5 p-4 border-t border-white/20">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-sm font-bold text-purple-400 mb-2">Your Performance</div>
+                            <div className="space-y-1 text-sm">
+                              <div>Games Played: <span className="font-bold">{rec.you.gamesPlayed}</span></div>
+                              <div>Avg Position: <span className="font-bold">{rec.you.avgPosition ? rec.you.avgPosition.toFixed(2) : 'N/A'}</span></div>
+                              <div>Wins: <span className="font-bold">{rec.you.wins}</span></div>
+                              <div>Win Rate: <span className="font-bold">{rec.you.winRate.toFixed(1)}%</span></div>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-red-400 mb-2">Opponent Performance</div>
+                            {rec.opponent ? (
+                              <div className="space-y-1 text-sm">
+                                <div>Games Played: <span className="font-bold">{rec.opponent.gamesPlayed}</span></div>
+                                <div>Avg Position: <span className="font-bold">{rec.opponent.avgPosition ? rec.opponent.avgPosition.toFixed(2) : 'N/A'}</span></div>
+                                <div>Wins: <span className="font-bold">{rec.opponent.wins}</span></div>
+                                <div>Win Rate: <span className="font-bold">{rec.opponent.winRate.toFixed(1)}%</span></div>
+                              </div>
+                            ) : (
+                              <div className="text-sm italic text-red-300">Never played this machine</div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         )}
 
         <div className="text-center text-sm text-purple-300 mt-8 pb-8">
-          <p>Powered by Match Play Events API</p>
+          <p>Tournament preparation tool powered by Match Play Events API</p>
         </div>
       </div>
     </div>
