@@ -51,12 +51,25 @@ async function getTournamentIds(userId, page) {
     while (hasMorePages) {
       console.log(`   Page ${currentPage}...`);
 
-      // Extract tournament IDs from current page
+      // Extract tournament IDs from current page (2025 only)
       const pageIds = await page.evaluate(() => {
         const tournaments = [];
-        const links = document.querySelectorAll('a[href^="/tournaments/"]');
 
-        links.forEach(link => {
+        // Find all tournament rows
+        const rows = document.querySelectorAll('a[href^="/tournaments/"]');
+
+        rows.forEach(link => {
+          // Check if this row has a 2025 date
+          const row = link.closest('tr') || link.closest('div');
+          if (!row) return;
+
+          const timeElement = row.querySelector('time[datetime]');
+          if (!timeElement) return;
+
+          const datetime = timeElement.getAttribute('datetime');
+          if (!datetime || !datetime.startsWith('2025')) return;
+
+          // Extract tournament ID
           const href = link.getAttribute('href');
           const match = href.match(/^\/tournaments\/(\d+)/);
           if (match) {
@@ -76,6 +89,14 @@ async function getTournamentIds(userId, page) {
           allTournamentIds.push(id);
         }
       });
+
+      // Check if we found any 2025 tournaments on this page
+      // If not, we've likely passed into 2024 and can stop
+      if (pageIds.length === 0) {
+        console.log('   No 2025 tournaments found on this page - stopping pagination.');
+        hasMorePages = false;
+        break;
+      }
 
       // Check if there's a next page button
       const nextButton = await page.$('button:has-text("Next")');
