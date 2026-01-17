@@ -99,9 +99,39 @@ async function getTournamentIds(userId, page) {
       }
     }
 
-    const tournamentIds = allTournamentIds;
+    console.log(`✅ Found ${allTournamentIds.length} tournaments!\n`);
 
-    console.log(`✅ Found ${tournamentIds.length} tournaments!\n`);
+    // Filter to 2025 tournaments only via API
+    console.log(`📅 Filtering to 2025 tournaments only...\n`);
+    const axios = require('axios');
+    const filtered2025 = [];
+
+    for (const tournamentId of allTournamentIds) {
+      try {
+        const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`);
+        const tournament = response.data;
+
+        if (tournament && tournament.started) {
+          const startDate = new Date(tournament.started);
+          if (startDate.getFullYear() === 2025) {
+            filtered2025.push(tournamentId);
+          }
+        }
+
+        // Show progress every 50 tournaments
+        if ((filtered2025.length + 1) % 50 === 0) {
+          console.log(`   Checked ${filtered2025.length}/${allTournamentIds.length} tournaments...`);
+        }
+      } catch (err) {
+        // Skip tournaments that can't be fetched
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    const tournamentIds = filtered2025;
+    console.log(`✅ Filtered to ${tournamentIds.length} tournaments from 2025!\n`);
 
     // Scrape arena names from tournaments
     console.log(`🎰 Scraping machine names from tournaments...\n`);
