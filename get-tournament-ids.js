@@ -118,7 +118,9 @@ async function getTournamentIds(userId, page) {
     for (const tournamentId of allTournamentIds) {
       try {
         const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`, axiosConfig);
-        const tournament = response.data;
+
+        // The API wraps the response in a 'data' object
+        const tournament = response.data.data || response.data;
 
         // Debug first tournament to see structure
         if (checkedCount === 0) {
@@ -126,8 +128,8 @@ async function getTournamentIds(userId, page) {
           console.log(`   Debug - Sample tournament data:`, JSON.stringify(tournament).substring(0, 200));
         }
 
-        // Try different date field names
-        const dateField = tournament.started || tournament.start_time || tournament.startTime || tournament.created_at || tournament.start;
+        // Try different date field names (startUtc is the correct one)
+        const dateField = tournament.startUtc || tournament.started || tournament.start_time || tournament.startTime || tournament.created_at || tournament.start;
 
         if (dateField) {
           const startDate = new Date(dateField);
