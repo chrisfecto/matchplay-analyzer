@@ -208,39 +208,42 @@ async function getTournamentIds(userId, page) {
 
     console.log(`\n✅ Found ${Object.keys(arenaMap).length} unique machines for user ${userId}!\n`);
 
-    // Automatically update the analyze.js file
-    const analyzeFilePath = path.join(__dirname, 'pages', 'api', 'analyze.js');
-    
-    if (!fs.existsSync(analyzeFilePath)) {
-      console.log('❌ Could not find pages/api/analyze.js');
-      console.log(`\n📋 Manually add this to KNOWN_TOURNAMENT_IDS:`);
-      console.log(`'${userId}': [${tournamentIds.join(', ')}]`);
-      return;
-    }
-    
-    let fileContent = fs.readFileSync(analyzeFilePath, 'utf8');
-    
-    // Check if user already exists
-    const userPattern = new RegExp(`'${userId}':\\s*\\[[^\\]]*\\]`);
-    
-    if (userPattern.test(fileContent)) {
-      console.log(`♻️  User ${userId} already exists. Updating tournament list...\n`);
-      fileContent = fileContent.replace(
-        userPattern,
-        `'${userId}': [${tournamentIds.join(', ')}]`
-      );
-    } else {
-      console.log(`➕ Adding user ${userId} to KNOWN_TOURNAMENT_IDS...\n`);
-      const knownTournamentsPattern = /(const KNOWN_TOURNAMENT_IDS = \{[^}]*)(}\;)/s;
-      fileContent = fileContent.replace(
-        knownTournamentsPattern,
-        `$1,
+    // Automatically update both analyze.js and compare.js files
+    const filesToUpdate = [
+      path.join(__dirname, 'pages', 'api', 'analyze.js'),
+      path.join(__dirname, 'pages', 'api', 'compare.js')
+    ];
+
+    for (const filePath of filesToUpdate) {
+      if (!fs.existsSync(filePath)) {
+        console.log(`❌ Could not find ${filePath}`);
+        continue;
+      }
+
+      let fileContent = fs.readFileSync(filePath, 'utf8');
+
+      // Check if user already exists
+      const userPattern = new RegExp(`'${userId}':\\s*\\[[^\\]]*\\]`);
+
+      if (userPattern.test(fileContent)) {
+        console.log(`♻️  Updating ${path.basename(filePath)} for user ${userId}...`);
+        fileContent = fileContent.replace(
+          userPattern,
+          `'${userId}': [${tournamentIds.join(', ')}]`
+        );
+      } else {
+        console.log(`➕ Adding user ${userId} to ${path.basename(filePath)}...`);
+        const knownTournamentsPattern = /(const KNOWN_TOURNAMENT_IDS = \{[^}]*)(}\;)/s;
+        fileContent = fileContent.replace(
+          knownTournamentsPattern,
+          `$1,
   '${userId}': [${tournamentIds.join(', ')}]
 $2`
-      );
+        );
+      }
+
+      fs.writeFileSync(filePath, fileContent, 'utf8');
     }
-    
-    fs.writeFileSync(analyzeFilePath, fileContent, 'utf8');
     
     console.log(`========================================`);
     console.log(`✅ SUCCESS!`);
