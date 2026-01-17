@@ -112,21 +112,29 @@ async function getTournamentIds(userId, page) {
         const response = await axios.get(`https://app.matchplay.events/api/tournaments/${tournamentId}`);
         const tournament = response.data;
 
+        // Debug first tournament to see structure
+        if (checkedCount === 0) {
+          console.log(`   Debug - Response keys: ${Object.keys(tournament).join(', ')}`);
+          console.log(`   Debug - Sample tournament data:`, JSON.stringify(tournament).substring(0, 200));
+        }
+
         // Try different date field names
-        const dateField = tournament.started || tournament.start_time || tournament.startTime || tournament.created_at;
+        const dateField = tournament.started || tournament.start_time || tournament.startTime || tournament.created_at || tournament.start;
 
         if (dateField) {
           const startDate = new Date(dateField);
           const year = startDate.getFullYear();
 
-          // Debug first tournament to see what we're getting
+          // Debug first tournament date
           if (checkedCount === 0) {
-            console.log(`   Debug - First tournament date: ${dateField} -> Year: ${year}`);
+            console.log(`   Debug - Date field: ${dateField} -> Year: ${year}`);
           }
 
           if (year === 2025) {
             filtered2025.push(tournamentId);
           }
+        } else if (checkedCount === 0) {
+          console.log(`   Debug - No date field found in tournament data`);
         }
 
         checkedCount++;
@@ -135,7 +143,9 @@ async function getTournamentIds(userId, page) {
           console.log(`   Checked ${checkedCount}/${allTournamentIds.length} tournaments... (Found ${filtered2025.length} from 2025)`);
         }
       } catch (err) {
-        // Skip tournaments that can't be fetched
+        if (checkedCount === 0) {
+          console.log(`   Debug - API Error: ${err.message}`);
+        }
         checkedCount++;
       }
 
