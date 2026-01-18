@@ -52,15 +52,20 @@ try {
 }
 
 // Load Wizard World approved tournament machines
-let WIZARD_WORLD_MACHINES = [];
-try {
-  const wizardWorldPath = path.join(process.cwd(), 'data', 'wizard-world-machines.json');
-  if (fs.existsSync(wizardWorldPath)) {
-    WIZARD_WORLD_MACHINES = JSON.parse(fs.readFileSync(wizardWorldPath, 'utf8'));
-    console.log(`✓ Loaded ${WIZARD_WORLD_MACHINES.length} approved Wizard World machines`);
+function loadWizardWorldMachines() {
+  try {
+    const wizardWorldPath = path.join(process.cwd(), 'data', 'wizard-world-machines.json');
+    if (fs.existsSync(wizardWorldPath)) {
+      const machines = JSON.parse(fs.readFileSync(wizardWorldPath, 'utf8'));
+      console.log(`✓ Loaded ${machines.length} approved Wizard World machines`);
+      return machines;
+    }
+    console.log('⚠️  Wizard World machines file not found');
+    return null;
+  } catch (err) {
+    console.log('⚠️  Could not load Wizard World machines list:', err.message);
+    return null;
   }
-} catch (err) {
-  console.log('⚠️  Could not load Wizard World machines list');
 }
 
 async function processBatch(items, batchSize, processFn) {
@@ -239,6 +244,15 @@ export default async function handler(req, res) {
   try {
     console.log(`\nComparing ${PLAYER_NAMES[playerId]} vs ${PLAYER_NAMES[opponentId]}...\n`);
 
+    // Load Wizard World machines list fresh for each request
+    const wizardWorldMachines = loadWizardWorldMachines();
+
+    if (!wizardWorldMachines) {
+      return res.status(500).json({
+        error: 'Could not load Wizard World machines list. Please ensure the data file exists.'
+      });
+    }
+
     // Get stats for both players
     const [playerData, opponentData] = await Promise.all([
       getPlayerStats(playerId),
@@ -262,7 +276,7 @@ export default async function handler(req, res) {
       if (!yourStats) return;
 
       // Only include machines available at Wizard World
-      if (WIZARD_WORLD_MACHINES.length > 0 && !WIZARD_WORLD_MACHINES.includes(machine)) {
+      if (!wizardWorldMachines.includes(machine)) {
         return;
       }
 
